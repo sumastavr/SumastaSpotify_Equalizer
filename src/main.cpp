@@ -1,6 +1,10 @@
+// !!! Compiled succesfully in ARDUINO IDE 2.0
+// Teensy 3.2, set to optimize state: Fastest
+// Overclock 120Mhz!
+
 #include <Arduino.h>
 
-
+//#include <Arduino.h>
 // all these libraries are required for the Teensy Audio Library
 #include <Audio.h>
 #include <Wire.h>
@@ -18,13 +22,12 @@
 #define COLOR_DEPTH 24                  // known working: 24, 48 - If the sketch uses type `rgb24` directly, COLOR_DEPTH must be 24
 const uint8_t kMatrixWidth = totalBars;        // known working: 32, 64, 96, 128
 const uint8_t kMatrixHeight = 32;       // known working: 16, 32, 48, 64
-const uint8_t kRefreshDepth = 36;       // known working: 24, 36, 48
+const uint8_t kRefreshDepth = 24;       // known working: 24, 36, 48
 const uint8_t kDmaBufferRows = 4;       // known working: 2-4, use 2 to save memory, more to keep from dropping frames and automatically lowering refresh rate
 const uint8_t kPanelType = SMARTMATRIX_HUB75_32ROW_MOD16SCAN; // use SMARTMATRIX_HUB75_16ROW_MOD8SCAN for common 16x32 panels, or use SMARTMATRIX_HUB75_64ROW_MOD32SCAN for common 64x64 panels
 const uint8_t kMatrixOptions = (SMARTMATRIX_OPTIONS_NONE);      // see http://docs.pixelmatix.com/SmartMatrix for options
 const uint8_t kBackgroundLayerOptions = (SM_BACKGROUND_OPTIONS_NONE);
 const uint8_t kScrollingLayerOptions = (SM_SCROLLING_OPTIONS_NONE);
-
 
 SMARTMATRIX_ALLOCATE_BUFFERS(matrix, kMatrixWidth, kMatrixHeight, kRefreshDepth, kDmaBufferRows, kPanelType, kMatrixOptions);
 SMARTMATRIX_ALLOCATE_BACKGROUND_LAYER(backgroundLayer, kMatrixWidth, kMatrixHeight, COLOR_DEPTH, kBackgroundLayerOptions);
@@ -59,10 +62,12 @@ byte status = 0;
 
 uint8_t getVerticalRedHue(int val);
 uint8_t getVerticalGreenHue(int val);
-
+unsigned char serial1buffer[200];
 void setup()
 {
-    Serial.begin(9600);
+    Serial.begin(57600);
+    Serial1.begin(57600);
+    Serial1.addMemoryForRead(serial1buffer, 200);
     Serial.println("Begin");
 
         // Initialize Matrix
@@ -70,7 +75,7 @@ void setup()
     matrix.addLayer(&scrollingLayer); 
     matrix.begin();
     
-    matrix.setBrightness(50);
+    matrix.setBrightness(40);
     
     scrollingLayer.setColor({0xff, 0xff, 0xff});
     scrollingLayer.setMode(wrapForward);
@@ -84,12 +89,39 @@ void setup()
 
     // Audio requires memory to work.
     AudioMemory(24);
+    //AudioMemory(12);
+
 }
 
-void loop(){
-  
-    if (fft.available()) {
+bool incomingText=false;
+long timerReceiveText=millis();
+String text="";
 
+void loop(){
+
+    if (Serial1.available()>0 && !incomingText){
+      incomingText=true;
+      timerReceiveText=millis();
+    }
+
+    if(incomingText==true && millis()-timerReceiveText>500){
+      text="";
+      while(Serial1.available()>0){
+        text+=(char)Serial1.read();
+      }
+      Serial.print("ECHO: ");
+      Serial.println(text);
+      char charText[200];
+      text.toCharArray(charText, text.length()+1);
+      scrollingLayer.start(charText, 1);
+      incomingText=false;
+      timerReceiveText=millis();
+      //Serial1.flush();
+    }
+
+    if (fft.available()) {
+        //Serial.print("Y");
+        //delay(100);
         level[0] = fft.read(2);
         level[1] = fft.read(3);
         level[2] = fft.read(4);
@@ -248,6 +280,7 @@ void loop(){
             
             // TODO: conversion from FFT data to display bars should be
             // exponentially scaled.  But how to keep it a simple example?
+            
             int val = level[i] * scale;
 
             // trim the bars vertically to fill the matrix height
